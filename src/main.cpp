@@ -3,6 +3,8 @@
 #include "rlgl.h"
 #include "raymath.h"
 
+#include "game.h"
+
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
@@ -16,104 +18,20 @@ int main ()
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "raylib [core] example - 2d camera mouse zoom");
 
-    Camera2D camera = { 0 };
-    camera.zoom = 1.0f;
 
-    int zoomMode = 0;   // 0-Mouse Wheel, 1-Mouse Move
-
-    SetTargetFPS(60);                   // Set our game to run at 60 frames-per-second
+    SetTargetFPS(180);                   // Set our game to run at 60 frames-per-second
     //--------------------------------------------------------------------------------------
+
+    GameData data = {0};
+    data.camera.zoom = 1.0;
+
 
     // Main game loop
     while (!WindowShouldClose())        // Detect window close button or ESC key
     {
         // Update
         //----------------------------------------------------------------------------------
-        if (IsKeyPressed(KEY_ONE)) zoomMode = 0;
-        else if (IsKeyPressed(KEY_TWO)) zoomMode = 1;
-        
-        // Translate based on mouse right click
-        if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT))
-        {
-            Vector2 delta = GetMouseDelta();
-            delta = Vector2Scale(delta, -1.0f/camera.zoom);
-            camera.target = Vector2Add(camera.target, delta);
-        }
-
-        if (zoomMode == 0)
-        {
-            // Zoom based on mouse wheel
-            float wheel = GetMouseWheelMove();
-            if (wheel != 0)
-            {
-                // Get the world point that is under the mouse
-                Vector2 mouseWorldPos = GetScreenToWorld2D(GetMousePosition(), camera);
-
-                // Set the offset to where the mouse is
-                camera.offset = GetMousePosition();
-
-                // Set the target to match, so that the camera maps the world space point 
-                // under the cursor to the screen space point under the cursor at any zoom
-                camera.target = mouseWorldPos;
-
-                // Zoom increment
-                float scaleFactor = 1.0f + (0.25f*fabsf(wheel));
-                if (wheel < 0) scaleFactor = 1.0f/scaleFactor;
-                camera.zoom = Clamp(camera.zoom*scaleFactor, 0.125f, 64.0f);
-            }
-        }
-        else
-        {
-            // Zoom based on mouse left click
-            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-            {
-                // Get the world point that is under the mouse
-                Vector2 mouseWorldPos = GetScreenToWorld2D(GetMousePosition(), camera);
-
-                // Set the offset to where the mouse is
-                camera.offset = GetMousePosition();
-
-                // Set the target to match, so that the camera maps the world space point 
-                // under the cursor to the screen space point under the cursor at any zoom
-                camera.target = mouseWorldPos;
-            }
-            if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
-            {
-                // Zoom increment
-                float deltaX = GetMouseDelta().x;
-                float scaleFactor = 1.0f + (0.01f*fabsf(deltaX));
-                if (deltaX < 0) scaleFactor = 1.0f/scaleFactor;
-                camera.zoom = Clamp(camera.zoom*scaleFactor, 0.125f, 64.0f);
-            }
-        }
-        //----------------------------------------------------------------------------------
-
-        // Draw
-        //----------------------------------------------------------------------------------
-        BeginDrawing();
-            ClearBackground(RAYWHITE);
-
-            BeginMode2D(camera);
-
-                // Draw the 3d grid, rotated 90 degrees and centered around 0,0 
-                // just so we have something in the XY plane
-                rlPushMatrix();
-                    rlTranslatef(0, 25*50, 0);
-                    rlRotatef(90, 1, 0, 0);
-                    DrawGrid(100, 50);
-                rlPopMatrix();
-
-                // Draw a reference circle
-                DrawCircle(GetScreenWidth()/2, GetScreenHeight()/2, 50, MAROON);
-                
-            EndMode2D();
-
-            DrawText("[1][2] Select mouse zoom mode (Wheel or Move)", 20, 20, 20, DARKGRAY);
-            if (zoomMode == 0) DrawText("Mouse right button drag to move, mouse wheel to zoom", 20, 50, 20, DARKGRAY);
-            else DrawText("Mouse right button drag to move, mouse press and move to zoom", 20, 50, 20, DARKGRAY);
-        
-        EndDrawing();
-        //----------------------------------------------------------------------------------
+        UpdateAndRender(&data);
     }
 
     // De-Initialization

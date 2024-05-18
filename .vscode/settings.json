@@ -1,0 +1,7 @@
+{
+    "files.associations": {
+        "Dockerfile*": "dockerfile",
+        "chrono": "cpp",
+        "functional": "cpp"
+    }
+}
