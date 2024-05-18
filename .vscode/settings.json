@@ -2,6 +2,16 @@
     "files.associations": {
         "Dockerfile*": "dockerfile",
         "chrono": "cpp",
-        "functional": "cpp"
+        "functional": "cpp",
+        "cmath": "cpp",
+        "algorithm": "cpp",
+        "array": "cpp",
+        "atomic": "cpp",
+        "charconv": "cpp",
+        "utility": "cpp",
+        "xhash": "cpp",
+        "xstring": "cpp",
+        "*.m": "cpp",
+        "xlocmes": "cpp"
     }
 }

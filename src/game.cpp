@@ -4,92 +4,180 @@
 #include "rlgl.h"
 #include "raymath.h"
 
-int UpdateAndRender(GameData * data) {
+int Init(GameData *data) {
+    data->camera.zoom = 1.0;
 
-    int *zoomMode = &data->zoomMode;
-    if (IsKeyPressed(KEY_ONE)) *zoomMode = 0;
-    else if (IsKeyPressed(KEY_TWO)) *zoomMode = 1;
-    
-    // Translate based on mouse right click
-    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT))
-    {
-        Vector2 delta = GetMouseDelta();
-        delta = Vector2Scale(delta, -1.0f/data->camera.zoom);
-        data->camera.target = Vector2Add(data->camera.target, delta);
-    }
+    data->config.bounds = {0, 0, 1280, 720};
 
-    if (*zoomMode == 0)
-    {
-        // Zoom based on mouse wheel
-        float wheel = GetMouseWheelMove();
-        if (wheel != 0)
-        {
-            // Get the world point that is under the mouse
-            Vector2 mouseWorldPos = GetScreenToWorld2D(GetMousePosition(), data->camera);
+    data->config.count = 100;
 
-            // Set the offset to where the mouse is
-            data->camera.offset = GetMousePosition();
+    data->config.maxSpeed = 100.0f;
+    data->config.turnFactor = 10;
 
-            // Set the target to match, so that the camera maps the world space point 
-            // under the cursor to the screen space point under the cursor at any zoom
-            data->camera.target = mouseWorldPos;
+    data->config.avoidRadius = 20.0f;
+    data->config.avoidFactor = 0.05f;
 
-            // Zoom increment
-            float scaleFactor = 1.0f + (0.25f*fabsf(wheel));
-            if (wheel < 0) scaleFactor = 1.0f/scaleFactor;
-            data->camera.zoom = Clamp(data->camera.zoom*scaleFactor, 0.125f, 64.0f);
+    data->config.visibleRadius = 100.0f;
+    data->config.alignFactor = 0.05f;
+    data->config.cohesionFactor = 0.0005f;
+
+    return 0;
+}
+
+struct Boid {};
+
+struct Position {
+    Vector2 p;
+};
+
+struct Velocity {
+    Vector2 v;
+};
+
+float randf() {
+    return rand() / float(RAND_MAX);
+}
+
+float lerp(float lo, float hi, float amount) {
+    return amount * (hi - lo) + lo;
+}
+
+float randf_range(float lo, float hi) {
+    return lerp(lo, hi, randf());
+}
+
+void spawnBoids(entt::registry &registry, const Config &config) {
+    auto boids = registry.view<const Boid>();
+
+    if (boids.size() < config.count) {
+        for (int i = 0; i , config.count - boids.size(); i++) {
+            const auto entity = registry.create();
+            registry.emplace<Boid>(entity);
+            registry.emplace<Position>(entity, Vector2{randf_range(0, config.bounds.width - config.bounds.x), randf_range(0, config.bounds.height - config.bounds.y)});
+            registry.emplace<Velocity>(entity, Vector2{randf_range(-config.maxSpeed, config.maxSpeed), randf_range(-config.maxSpeed, config.maxSpeed)});
         }
     }
-    else
-    {
-        // Zoom based on mouse left click
-        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
-        {
-            // Get the world point that is under the mouse
-            Vector2 mouseWorldPos = GetScreenToWorld2D(GetMousePosition(), data->camera);
+}
 
-            // Set the offset to where the mouse is
-            data->camera.offset = GetMousePosition();
-
-            // Set the target to match, so that the camera maps the world space point 
-            // under the cursor to the screen space point under the cursor at any zoom
-            data->camera.target = mouseWorldPos;
+void updateTurnFactor(entt::registry &registry, Config &config) {
+    const auto boids = registry.view<Position, Velocity>();
+    for (auto [entity, position, velocity] : boids.each()) {
+        if (position.p.x < config.bounds.x) {
+            velocity.v.x += config.turnFactor;
+        } else if (position.p.x > config.bounds.x + config.bounds.width) {
+            velocity.v.x -= config.turnFactor;
         }
-        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
-        {
-            // Zoom increment
-            float deltaX = GetMouseDelta().x;
-            float scaleFactor = 1.0f + (0.01f*fabsf(deltaX));
-            if (deltaX < 0) scaleFactor = 1.0f/scaleFactor;
-            data->camera.zoom = Clamp(data->camera.zoom*scaleFactor, 0.125f, 64.0f);
+
+        if (position.p.y < config.bounds.y) {
+            velocity.v.y += config.turnFactor;
+        } else if (position.p.y > config.bounds.y + config.bounds.height) {
+            velocity.v.y -= config.turnFactor;
         }
     }
-    //----------------------------------------------------------------------------------
+}
+
+void updateVelocity(entt::registry &registry, float deltaTime) {
+    const auto boids = registry.view<Position, Velocity>();
+    for (auto [entity, position, velocity] : boids.each()) {
+        position.p = Vector2Add(position.p, Vector2Multiply(velocity.v, Vector2{deltaTime, deltaTime}));
+    }
+}
+
+void avoidance(entt::registry &registry, Config &config) {
+    const auto boids = registry.view<Boid, Position, Velocity>();
+
+    Vector2 close = {0};
+    for (auto [entity, position, velocity] : boids.each()) {
+        for (auto [otherEntity, otherPosition, otherVelocity] : boids.each()) {
+            if (entity == otherEntity) continue;
+            Vector2 distance = Vector2Subtract(position.p, otherPosition.p);
+            if (Vector2Length(distance) <= config.avoidRadius) {
+                close = Vector2Add(close, distance);
+            }
+        }
+
+        velocity.v = Vector2Add(velocity.v, Vector2Multiply(close, Vector2{config.avoidFactor, config.avoidFactor}));
+    }
+}
+
+void alignment(entt::registry &registry, Config &config) {
+    const auto boids = registry.view<Boid, Position, Velocity>();
+    for (auto [entity, position, velocity] : boids.each()) {
+        Vector2 avgVelocity = {0};
+        int neighborCount = 0;
+        for (auto [otherEntity, otherPosition, otherVelocity] : boids.each()) {
+            if (entity == otherEntity) continue;
+            Vector2 distance = Vector2Subtract(position.p, otherPosition.p);
+            if (Vector2Length(distance) <= config.visibleRadius) {
+                neighborCount++;
+                avgVelocity = Vector2Add(avgVelocity, otherVelocity.v);
+            }
+        }
+
+        if (neighborCount > 0) {
+            avgVelocity = Vector2Divide(avgVelocity, Vector2{float(neighborCount), float(neighborCount)});
+            velocity.v = Vector2Add(velocity.v, Vector2Multiply(Vector2Subtract(avgVelocity, velocity.v), Vector2{config.alignFactor, config.alignFactor}));
+        }
+    }
+}
+
+void cohesion(entt::registry &registry, Config &config) {
+    const auto boids = registry.view<Boid, Position, Velocity>();
+    for (auto [entity, position, velocity] : boids.each()) {
+        Vector2 avgPosition = {0};
+        int neighborCount = 0;
+        for (auto [otherEntity, otherPosition, otherVelocity] : boids.each()) {
+            if (entity == otherEntity) continue;
+            Vector2 distance = Vector2Subtract(position.p, otherPosition.p);
+            if (Vector2Length(distance) <= config.visibleRadius) {
+                neighborCount++;
+                avgPosition = Vector2Add(avgPosition, otherPosition.p);
+            }
+        }
+
+        if (neighborCount > 0) {
+            avgPosition = Vector2Divide(avgPosition, Vector2{float(neighborCount), float(neighborCount)});
+            velocity.v = Vector2Add(velocity.v, Vector2Multiply(Vector2Subtract(avgPosition, position.p), Vector2{config.cohesionFactor, config.cohesionFactor}));
+        }
+    }
+}
+
+void mustGoFaster(entt::registry &registry, Config &config, float delta) {
+    const auto boids = registry.view<Boid, Velocity>();
+    for (auto [entity, velocity] : boids.each()) {
+        if (Vector2Length(velocity.v) < config.maxSpeed) {
+            velocity.v = Vector2Add(velocity.v, Vector2Multiply(Vector2Multiply(Vector2Normalize(velocity.v), Vector2{config.maxSpeed, config.maxSpeed}), Vector2{delta, delta}));
+        }
+    }
+}
+
+void drawBoids(entt::registry &registry) {
+    const auto boids = registry.view<Boid, Position>();
+
+    for (auto [entity, position] : boids.each()) {
+        DrawRectangleV(position.p, Vector2{10, 10}, GREEN);
+    }
+}
+
+int UpdateAndRender(GameData * data)
+{
+    float delta = GetFrameTime();
+
+    spawnBoids(data->registry, data->config);
+    avoidance(data->registry, data->config);
+    alignment(data->registry, data->config);
+    cohesion(data->registry, data->config);
+    updateTurnFactor(data->registry, data->config);
+    mustGoFaster(data->registry, data->config, delta);
+    updateVelocity(data->registry, delta);
 
     // Draw
     //----------------------------------------------------------------------------------
     BeginDrawing();
-        ClearBackground(RAYWHITE);
-
+        ClearBackground(GRAY);
         BeginMode2D(data->camera);
-
-            // Draw the 3d grid, rotated 90 degrees and centered around 0,0 
-            // just so we have something in the XY plane
-            rlPushMatrix();
-                rlTranslatef(0, 25*50, 0);
-                rlRotatef(90, 1, 0, 0);
-                DrawGrid(100, 50);
-            rlPopMatrix();
-
-            // Draw a reference circle
-            DrawCircle(GetScreenWidth()/2, GetScreenHeight()/2, 50, MAROON);
-            
+        drawBoids(data->registry);
         EndMode2D();
-
-        DrawText("[1][2] Select mouse zoom mode (Wheel or Move)", 20, 20, 20, DARKGRAY);
-        if (*zoomMode == 0) DrawText("Mouse right button drag to move, mouse wheel to zoom", 20, 50, 20, DARKGRAY);
-        else DrawText("Mouse right button drag to move, mouse press and move to zoom", 20, 50, 20, DARKGRAY);
-    
     EndDrawing();
     //----------------------------------------------------------------------------------
 

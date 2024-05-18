@@ -12,8 +12,8 @@ int main ()
 {
     // Initialization
     //--------------------------------------------------------------------------------------
-    const int screenWidth = 800;
-    const int screenHeight = 450;
+    const int screenWidth = 1280;
+    const int screenHeight = 720;
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE);
     InitWindow(screenWidth, screenHeight, "raylib [core] example - 2d camera mouse zoom");
@@ -23,8 +23,8 @@ int main ()
     //--------------------------------------------------------------------------------------
 
     GameData data = {0};
-    data.camera.zoom = 1.0;
 
+    Init(&data);
 
     // Main game loop
     while (!WindowShouldClose())        // Detect window close button or ESC key
