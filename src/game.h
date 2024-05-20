@@ -1,5 +1,7 @@
 #pragma once
+
 #include <entt/entt.hpp>
+
 #include "raylib.h"
 
 struct Config {
@@ -7,6 +9,9 @@ struct Config {
 
     Rectangle bounds;
 
+    float cellSize;
+
+    float minSpeed;
     float maxSpeed;
 
     float turnFactor;
@@ -20,7 +25,7 @@ struct Config {
 };
 
 struct GameData {
-    entt::registry registry;
+    entt::registry reg;
 
     Camera2D camera;
 
@@ -28,5 +33,5 @@ struct GameData {
 };
 
 
-int Init(GameData *data);
-int UpdateAndRender(GameData *data);
+int Init(GameData &data);
+int UpdateAndRender(GameData &data);

@@ -24,14 +24,16 @@ int main ()
 
     GameData data = {0};
 
-    Init(&data);
+    Init(data);
+
+    srand(time_t(NULL));
 
     // Main game loop
     while (!WindowShouldClose())        // Detect window close button or ESC key
     {
         // Update
         //----------------------------------------------------------------------------------
-        UpdateAndRender(&data);
+        UpdateAndRender(data);
     }
 
     // De-Initialization
