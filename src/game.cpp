@@ -127,12 +127,12 @@ void boidLogic(entt::registry& reg, Config& config, const std::unordered_map<int
 
     reg.clear<Neighbor>();
 
-    Vector2 close = { 0 };
     for (auto [entity, position, velocity] : boids.each()) {
         int h = hashCell(positionToCell(position, config.cellSize));
         int neighborCount = 0;
-        Vector2 avgVelocity = { 0 };
-        Vector2 avgPosition = { 0 };
+        Vector2 close = {};
+        Vector2 avgVelocity = {};
+        Vector2 avgPosition = {};
         for (auto [otherEntity, otherPosition, otherVelocity] : spatialHash.at(h)) {
             if (entity == otherEntity) continue;
 
@@ -169,8 +169,8 @@ void avoidance(entt::registry &reg, Config &config, const std::unordered_map<int
 {
     const auto boids = reg.view<Boid, Position, Velocity>();
 
-    Vector2 close = {0};
     for (auto [entity, position, velocity] : boids.each()) {
+        Vector2 close = {};
         int h = hashCell(positionToCell(position, config.cellSize));
         for (auto [otherEntity, otherPosition, otherVelocity] : spatialHash.at(h)) {
             if (entity == otherEntity) continue;
