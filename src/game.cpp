@@ -265,9 +265,9 @@ void drawBoids(const entt::registry &reg)
 {
     ZoneScoped;
 
-    const auto boids = reg.view<Boid, Position, BoidColor>();
+    const auto boids = reg.view<Boid, Position, Velocity, BoidColor>();
 
-    for (auto [entity, position, color] : boids.each()) {
+    for (auto [entity, position, velocity, color] : boids.each()) {
         auto c = color.color;
         if (reg.all_of<Candidate>(entity)) {
             c = GREEN;
@@ -279,9 +279,19 @@ void drawBoids(const entt::registry &reg)
             c = BLUE;
         }
 
-        auto size = Vector2{10, 10};
-        auto halfSize = Vector2{size.x / 2.0f, size.y / 2.0f};
-        DrawRectangleV(Vector2Subtract(position.p, halfSize), Vector2{10, 10}, c);
+        if (IsKeyDown(KEY_SPACE)) {
+            auto size = Vector2{ 10, 10 };
+            auto halfSize = Vector2{ size.x / 2.0f, size.y / 2.0f };
+            DrawRectangleV(Vector2Subtract(position.p, halfSize), Vector2{ 10, 10 }, c);
+        }
+        else {
+            float rot = atan2f(velocity.v.y, velocity.v.x) + PI / 2;
+            float size = 10;
+            auto v1 = Vector2Add(position.p, Vector2Rotate({ 0, -size * 2.0f }, rot));
+            auto v2 = Vector2Add(position.p, Vector2Rotate({ -size * .8f, size }, rot));
+            auto v3 = Vector2Add(position.p, Vector2Rotate({ size * .8f, size }, rot));
+            DrawTriangle(v1, v2, v3, c);
+        }
     }
 }
 
@@ -432,7 +442,6 @@ void draw(const GameData &data)
         int fontSize = 20;
 
         // drawDebugSelectedText(data.reg, 10, start, fontSize);
-
         EndMode2D();
     EndDrawing();
 }
