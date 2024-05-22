@@ -5,6 +5,8 @@
 
 #include "game.h"
 
+#include "tracy/Tracy.hpp"
+
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
@@ -19,7 +21,7 @@ int main ()
     InitWindow(screenWidth, screenHeight, "raylib [core] example - 2d camera mouse zoom");
 
 
-    SetTargetFPS(180);                   // Set our game to run at 60 frames-per-second
+    // SetTargetFPS(180);                   // Set our game to run at 60 frames-per-second
     //--------------------------------------------------------------------------------------
 
     GameData data = {0};
@@ -34,6 +36,8 @@ int main ()
         // Update
         //----------------------------------------------------------------------------------
         UpdateAndRender(data);
+
+        FrameMark;
     }
 
     // De-Initialization

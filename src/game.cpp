@@ -2,6 +2,8 @@
 #include "rlgl.h"
 #include "raymath.h"
 
+#include "tracy/Tracy.hpp"
+
 #include "game.h"
 
 int Init(GameData &data)
@@ -10,9 +12,7 @@ int Init(GameData &data)
 
     data.config.bounds = {100, 100, 1280 - 200, 720 - 200};
 
-    data.config.cellSize = 10.0;
-
-    data.config.count = 10;
+    data.config.count = 100;
 
     data.config.minSpeed = 2.0f;
     data.config.maxSpeed = 100.0f;
@@ -25,29 +25,11 @@ int Init(GameData &data)
     data.config.alignFactor = 0.05f;
     data.config.cohesionFactor = 0.0005f;
 
+
+    data.config.cellSize = data.config.visibleRadius;
+
     return 0;
 }
-
-struct Boid {};
-
-struct Position
-{
-    Vector2 p;
-};
-
-struct Velocity
-{
-    Vector2 v;
-};
-
-struct BoidColor
-{
-    Color color;
-};
-
-struct Selected {};
-struct Candidate {};
-struct Neighbor {};
 
 float randf()
 {
@@ -64,39 +46,32 @@ float randf_range(float lo, float hi)
     return lerp(lo, hi, randf());
 }
 
-
-struct HashEntry {
-    entt::entity entity;
-    Position p;
-    Velocity v;
-};
-
-std::pair<int, int> positionToCell(const Position &p, float cellSize)
+void spawnBoids(entt::registry &reg, const Config &config, SpatialHash &spatialHash)
 {
-    return std::pair(int(p.p.x / cellSize),  int(p.p.y / cellSize));
-}
+    ZoneScoped;
 
-int hashCell(std::pair<int, int> p) {
-    return p.first * 92837111 + p.second * 689287499;
-}
-
-void spawnBoids(entt::registry &reg, const Config &config)
-{
     auto boids = reg.view<const Boid>();
 
-        if (boids.size() < config.count) {
+    if (boids.size() < config.count) {
         for (int i = 0; i , config.count - boids.size(); i++) {
             const auto entity = reg.create();
             reg.emplace<Boid>(entity);
-            reg.emplace<Position>(entity, Vector2{randf_range(config.bounds.x, config.bounds.width + config.bounds.x), randf_range(config.bounds.y, config.bounds.height + config.bounds.y)});
+            auto p = Vector2{ randf_range(config.bounds.x, config.bounds.width + config.bounds.x), randf_range(config.bounds.y, config.bounds.height + config.bounds.y) };
+            reg.emplace<Position>(entity, p);
+            reg.emplace<LastPosition>(entity, p);
             reg.emplace<Velocity>(entity, Vector2{randf_range(-config.maxSpeed, config.maxSpeed), randf_range(-config.maxSpeed, config.maxSpeed)});
             reg.emplace<BoidColor>(entity, Color{0, 255, 255, 255});
+
+            auto [position, velocity, lastPosition] = reg.get<Position, Velocity, LastPosition>(entity);
+            insert_into(spatialHash, config, entity, position, velocity, lastPosition, true);
         }
     }
 }
 
 void updateTurnFactor(entt::registry &reg, Config &config)
 {
+    ZoneScoped;
+    
     const auto boids = reg.view<Position, Velocity>();
     for (auto [entity, position, velocity] : boids.each()) {
         if (position.p.x < config.bounds.x) {
@@ -115,26 +90,30 @@ void updateTurnFactor(entt::registry &reg, Config &config)
 
 void moveEntities(entt::registry &reg, float deltaTime)
 {
+    ZoneScoped;
+    
     const auto boids = reg.view<Position, Velocity>();
     for (auto [entity, position, velocity] : boids.each()) {
         position.p = Vector2Add(position.p, Vector2Multiply(velocity.v, Vector2{deltaTime, deltaTime}));
     }
 }
 
-void boidLogic(entt::registry& reg, Config& config, const std::unordered_map<int, std::vector<HashEntry>>& spatialHash)
+void boidLogic(entt::registry& reg, Config& config, const SpatialHash& spatialHash)
 {
     const auto boids = reg.view<Boid, Position, Velocity>();
 
     reg.clear<Neighbor>();
 
     for (auto [entity, position, velocity] : boids.each()) {
-        int h = hashCell(positionToCell(position, config.cellSize));
+        auto cell = positionToCell(position, config.cellSize);
         int neighborCount = 0;
         Vector2 close = {};
         Vector2 avgVelocity = {};
         Vector2 avgPosition = {};
-        for (auto [otherEntity, otherPosition, otherVelocity] : spatialHash.at(h)) {
+        for (auto &[otherEntity] : get_all_in_cell(spatialHash, config, cell.first, cell.second)) {
             if (entity == otherEntity) continue;
+
+            auto [otherPosition, otherVelocity] = reg.get<Position, Velocity>(otherEntity);
 
             Vector2 distance = Vector2Subtract(position.p, otherPosition.p);
             if (Vector2Length(distance) <= config.avoidRadius) {
@@ -165,15 +144,19 @@ void boidLogic(entt::registry& reg, Config& config, const std::unordered_map<int
 }
 
 
-void avoidance(entt::registry &reg, Config &config, const std::unordered_map<int, std::vector<HashEntry>> &spatialHash)
+void avoidance(entt::registry &reg, Config &config, const SpatialHash &spatialHash)
 {
+    ZoneScoped;
+
     const auto boids = reg.view<Boid, Position, Velocity>();
 
     for (auto [entity, position, velocity] : boids.each()) {
         Vector2 close = {};
-        int h = hashCell(positionToCell(position, config.cellSize));
-        for (auto [otherEntity, otherPosition, otherVelocity] : spatialHash.at(h)) {
+        auto cell = positionToCell(position, config.cellSize);
+        for (auto &[otherEntity] : get_all_in_cell(spatialHash, config, cell.first, cell.second)) {
             if (entity == otherEntity) continue;
+
+            auto [otherPosition, otherVelocity] = reg.get<Position, Velocity>(otherEntity);
 
             Vector2 distance = Vector2Subtract(position.p, otherPosition.p);
             if (Vector2Length(distance) <= config.avoidRadius) {
@@ -185,17 +168,21 @@ void avoidance(entt::registry &reg, Config &config, const std::unordered_map<int
     }
 }
 
-void alignment(entt::registry &reg, Config &config, const std::unordered_map<int, std::vector<HashEntry>> &spatialHash)
+void alignment(entt::registry &reg, Config &config, const SpatialHash &spatialHash)
 {
+    ZoneScoped;
+    
     reg.clear<Neighbor>();
 
     const auto boids = reg.view<Boid, Position, Velocity>();
     for (auto [entity, position, velocity] : boids.each()) {
-        int h = hashCell(positionToCell(position, config.cellSize));
-        Vector2 avgVelocity = {0};
+        auto cell = positionToCell(position, config.cellSize);
+        Vector2 avgVelocity = {};
         int neighborCount = 0;
-        for (auto [otherEntity, otherPosition, otherVelocity] : spatialHash.at(h)) {
+        for (auto &[otherEntity] : get_all_in_cell(spatialHash, config, cell.first, cell.second)) {
             if (entity == otherEntity) continue;
+
+            auto [otherPosition, otherVelocity] = reg.get<Position, Velocity>(otherEntity);
 
             Vector2 distance = Vector2Subtract(position.p, otherPosition.p);
             if (Vector2Length(distance) <= config.visibleRadius) {
@@ -215,15 +202,20 @@ void alignment(entt::registry &reg, Config &config, const std::unordered_map<int
     }
 }
 
-void cohesion(entt::registry &reg, Config &config, const std::unordered_map<int, std::vector<HashEntry>> &spatialHash)
+void cohesion(entt::registry &reg, Config &config, const SpatialHash &spatialHash)
 {
+    ZoneScoped;
+    
     const auto boids = reg.view<Boid, Position, Velocity>();
     for (auto [entity, position, velocity] : boids.each()) {
-        int h = hashCell(positionToCell(position, config.cellSize));
+        auto cell = positionToCell(position, config.cellSize);
         Vector2 avgPosition = {0};
         int neighborCount = 0;
-        for (auto [otherEntity, otherPosition, otherVelocity] : spatialHash.at(h)) {
+        for (auto &[otherEntity] : get_all_in_cell(spatialHash, config, cell.first, cell.second)) {
             if (entity == otherEntity) continue;
+
+            auto [otherPosition, otherVelocity] = reg.get<Position, Velocity>(otherEntity);
+
 
             Vector2 distance = Vector2Subtract(position.p, otherPosition.p);
             if (Vector2Length(distance) <= config.visibleRadius) {
@@ -241,6 +233,8 @@ void cohesion(entt::registry &reg, Config &config, const std::unordered_map<int,
 
 void mustGoFaster(entt::registry &reg, Config &config, float delta)
 {
+    ZoneScoped;
+    
     const auto boids = reg.view<Boid, Velocity>();
     for (auto [entity, velocity] : boids.each()) {
         if (Vector2Length(velocity.v) < config.maxSpeed) {
@@ -253,8 +247,10 @@ void mustGoFaster(entt::registry &reg, Config &config, float delta)
     }
 }
 
-void drawBoids(entt::registry &reg)
+void drawBoids(const entt::registry &reg)
 {
+    ZoneScoped;
+
     const auto boids = reg.view<Boid, Position, BoidColor>();
 
     for (auto [entity, position, color] : boids.each()) {
@@ -275,55 +271,27 @@ void drawBoids(entt::registry &reg)
     }
 }
 
-int getSpatialRadius(const Config &config)
+void markCandidates(entt::registry &reg, const Config &config, const SpatialHash &spatialHash)
 {
-    int radius = 1;
+    ZoneScoped;
 
-    float maxRadiustoCheck = fmax(config.avoidRadius, config.visibleRadius);
-
-    if (maxRadiustoCheck > config.cellSize) {
-        radius = int(ceilf(maxRadiustoCheck / config.cellSize));
-    }
-
-    return radius + 1;
-}
-
-void markCandidates(entt::registry &reg, const Config &config, const std::unordered_map<int, std::vector<HashEntry>> &spatialHash)
-{
     reg.clear<Candidate>();
 
     auto selected = reg.view<Position, Selected>();
     for (auto [entity, position] : selected.each()) {
-        int h = hashCell(positionToCell(position, config.cellSize));
-        for (auto entry : spatialHash.at(h)) {
-            reg.emplace<Candidate>(entry.entity);
-        }
-    }
-}
-
-std::unordered_map<int, std::vector<HashEntry>> buildSpatialHash(entt::registry &reg, Config &config)
-{
-    std::unordered_map<int, std::vector<HashEntry>> results;
-
-    const auto boids = reg.view<Boid, Position, Velocity>();
-    for (auto [entity, position, velocity] : boids.each()) {
         auto cell = positionToCell(position, config.cellSize);
-
-        int radius = getSpatialRadius(config);
-
-        HashEntry entry = {entity, position, velocity};
-        for (int y = cell.second - radius; y <= cell.second + radius; y++) {
-            for (int x = cell.first - radius; x <= cell.first + radius; x ++) {
-                results[hashCell(std::pair(x,y))].push_back(entry);
+        for (auto &entry : get_all_in_cell(spatialHash, config, cell.first, cell.second)) {
+            if (entry.entity != entity) {
+                reg.emplace<Candidate>(entry.entity);
             }
         }
     }
-
-    return results;
 }
 
-void drawSpatialHashGrid(entt::registry &reg, const Config &config)
+void drawSpatialHashGrid(const entt::registry &reg, const Config &config)
 {
+    ZoneScoped;
+
     auto selected = reg.view<Position, Selected>();
     for ( auto [entity, position] : selected.each() ) {
         auto cell = positionToCell(position, config.cellSize);
@@ -337,8 +305,10 @@ void drawSpatialHashGrid(entt::registry &reg, const Config &config)
 
 }
 
-void drawDebugLines(entt::registry &reg, const Config &config)
+void drawDebugLines(const entt::registry &reg, const Config &config)
 {
+    ZoneScoped;
+
     auto selected = reg.view<Position, Selected>();
     for (auto [entity, position] : selected.each()) {
         DrawCircleLines(position.p.x, position.p.y, config.avoidRadius, RED);
@@ -346,21 +316,20 @@ void drawDebugLines(entt::registry &reg, const Config &config)
     }
 }
 
-void selectBoid(entt::registry &reg, const Config &config, const std::unordered_map<int, std::vector<HashEntry>> &spatialHash)
+void selectBoid(entt::registry &reg, const Config &config, const SpatialHash &spatialHash)
 {
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         Vector2 mouse = GetMousePosition();
 
         auto cell = positionToCell({mouse}, config.cellSize);
-        int h = hashCell(cell);
-
-        if (spatialHash.find(h) == spatialHash.end()) { return; }
 
         reg.clear<Selected>();
 
-        entt::entity minEntity;
+        entt::entity minEntity = {};
         float minDistance = FLT_MAX;
-        for (auto [entity, position, veloocity] : spatialHash.at(hashCell(cell))) {
+        for (auto &[entity] : get_all_in_cell(spatialHash, config, cell.first, cell.second)) {
+            auto position = reg.get<Position>(entity);
+
             auto distance = Vector2Distance(position.p, mouse);
             if (distance < minDistance) {
                 minDistance = distance;
@@ -376,6 +345,8 @@ void selectBoid(entt::registry &reg, const Config &config, const std::unordered_
 
 void drawBounds(const Config& config)
 {
+    ZoneScoped;
+
     DrawRectangleLines(config.bounds.x, config.bounds.y, config.bounds.width, config.bounds.height, RED);
 }
 
@@ -388,31 +359,46 @@ void updateBounds(Config &config)
     config.bounds.height = GetScreenHeight() - padding * 2;
 }
 
-int UpdateAndRender(GameData & data)
+void drawDebugSelectedText(const entt::registry &reg, int startX, int startY, int fontSize)
 {
-    float delta = GetFrameTime();
+    char buf[120];
 
-    updateBounds(data.config);
-
-    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
-        data.config.count++;
+    auto selected = reg.view<Selected, Position>();
+    Vector2 selectedPos = {};
+    for (auto [entity, position] : selected.each()) {
+        sprintf_s(buf, "selected: %d (%0.2f, %0.2f)", entity, position.p.x, position.p.y);
+        DrawText(buf, startX, startY, fontSize, Color{ 0, 255, 255, 255 });
+        startY += fontSize;
+        selectedPos = position.p;
     }
 
-    spawnBoids(data.reg, data.config);
+    auto candidates = reg.view<Candidate, Position>();
 
-    std::unordered_map<int, std::vector<HashEntry>> spatialHash = buildSpatialHash(data.reg, data.config);
-    selectBoid(data.reg, data.config, spatialHash);
-    markCandidates(data.reg, data.config, spatialHash);
-    avoidance(data.reg, data.config, spatialHash);
-    alignment(data.reg, data.config, spatialHash);
-    cohesion(data.reg, data.config, spatialHash);
-    // boidLogic(data.reg, data.config, spatialHash);
-    updateTurnFactor(data.reg, data.config);
-    mustGoFaster(data.reg, data.config, delta);
-    moveEntities(data.reg, delta);
+    std::vector<std::tuple<entt::entity, Position, float>> positions;
 
-    // Draw
-    //----------------------------------------------------------------------------------
+    for (auto [entity, position] : candidates.each()) {
+        positions.push_back(std::tuple(entity, position, Vector2Distance(selectedPos, position.p)));
+    }
+
+    std::sort(positions.begin(), positions.end(), [](auto a, auto b) {
+        return std::get<2>(a) < std::get<2>(b); 
+    });
+
+    for (auto [entity, position, distance] : positions) {
+        sprintf_s(buf, "%d (%0.2f, %0.2f) distance: %0.2f", entity, position.p.x, position.p.y, distance);
+
+        auto color = GREEN;
+        if (reg.all_of<Neighbor>(entity)) color = RED;
+        DrawText(buf, startX + 10, startY, fontSize, color);
+
+        startY += fontSize;
+    }
+}
+
+void draw(const GameData &data)
+{
+    ZoneScoped;
+
     BeginDrawing();
         ClearBackground(GRAY);
         BeginMode2D(data.camera);
@@ -428,8 +414,57 @@ int UpdateAndRender(GameData & data)
         sprintf_s(buf, "fps: %d", GetFPS());
         DrawText(buf, 10, 30, 20, Color{0, 255, 255, 255});
 
+        int start = 50;
+        int fontSize = 20;
+
+        // drawDebugSelectedText(data.reg, 10, start, fontSize);
+
         EndMode2D();
     EndDrawing();
+}
+
+void updateSpatialHash(GameData & data)
+{
+    ZoneScoped;
+
+    auto boids = data.reg.view<const Boid, const Position, const Velocity, LastPosition>();
+
+    for (auto [entity, p, v, l] : boids.each()) {
+        insert_into(data.spatialHash, data.config, entity, p, v, l);
+        // update the last position now that we've update the spatial
+        // so it can be used next frame
+        l.p = p.p;
+    }
+}
+
+int UpdateAndRender(GameData & data)
+{
+    ZoneScoped;
+
+    float delta = GetFrameTime();
+
+    updateBounds(data.config);
+
+    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
+        data.config.count++;
+    }
+
+    spawnBoids(data.reg, data.config, data.spatialHash);
+
+    updateSpatialHash(data);
+    selectBoid(data.reg, data.config, data.spatialHash);
+    markCandidates(data.reg, data.config, data.spatialHash);
+    avoidance(data.reg, data.config, data.spatialHash);
+    alignment(data.reg, data.config, data.spatialHash);
+    cohesion(data.reg, data.config, data.spatialHash);
+    // boidLogic(data.reg, data.config, data.spatialHash);
+    updateTurnFactor(data.reg, data.config);
+    mustGoFaster(data.reg, data.config, delta);
+    moveEntities(data.reg, delta);
+
+    // Draw
+    //----------------------------------------------------------------------------------
+    draw(data);
     //----------------------------------------------------------------------------------
 
     return 0;

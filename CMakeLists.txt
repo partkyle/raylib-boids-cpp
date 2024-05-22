@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.16)
 project(raylib-boids)
 
 set(CMAKE_C_STANDARD 17)
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # Adding Raylib
 include(FetchContent)
@@ -18,6 +19,15 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(raylib)
 
+FetchContent_Declare(
+    tracy
+    GIT_REPOSITORY "https://github.com/wolfpld/tracy.git"
+    GIT_TAG "v0.10"
+    GIT_PROGRESS TRUE
+)
+
+FetchContent_MakeAvailable(tracy)
+
 add_subdirectory(vendor/entt)
 
 # Adding our source files
@@ -27,10 +37,12 @@ set(PROJECT_INCLUDE "${CMAKE_CURRENT_LIST_DIR}/src/") # Define PROJECT_INCLUDE t
 # Declaring our executable
 add_executable(${PROJECT_NAME})
 target_sources(${PROJECT_NAME} PRIVATE ${PROJECT_SOURCES})
-target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_INCLUDE})
-target_link_libraries(${PROJECT_NAME} PRIVATE raylib)
 
-target_link_libraries("${CMAKE_PROJECT_NAME}" PRIVATE EnTT::EnTT)
+target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_INCLUDE})
+
+target_link_libraries(${PROJECT_NAME} PRIVATE raylib)
+target_link_libraries(${PROJECT_NAME} PRIVATE TracyClient)
+target_link_libraries(${PROJECT_NAME} PRIVATE EnTT::EnTT)
 
 # Setting ASSETS_PATH
 target_compile_definitions(${PROJECT_NAME} PUBLIC ASSETS_PATH="${CMAKE_CURRENT_SOURCE_DIR}/assets/") # Set the asset path macro to the absolute path on the dev machine
