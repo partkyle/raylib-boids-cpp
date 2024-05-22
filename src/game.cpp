@@ -53,7 +53,7 @@ void spawnBoids(entt::registry &reg, const Config &config, SpatialHash &spatialH
     auto boids = reg.view<const Boid>();
 
     if (boids.size() < config.count) {
-        for (int i = 0; i , config.count - boids.size(); i++) {
+        for (int i = 0; config.count - boids.size(); i++) {
             const auto entity = reg.create();
             reg.emplace<Boid>(entity);
             auto p = Vector2{ randf_range(config.bounds.x, config.bounds.width + config.bounds.x), randf_range(config.bounds.y, config.bounds.height + config.bounds.y) };
@@ -65,6 +65,18 @@ void spawnBoids(entt::registry &reg, const Config &config, SpatialHash &spatialH
             auto [position, velocity, lastPosition] = reg.get<Position, Velocity, LastPosition>(entity);
             insert_into(spatialHash, config, entity, position, velocity, lastPosition, true);
         }
+    }
+    else if (boids.size() > config.count) {
+        int toRemove = boids.size() - config.count;
+        std::vector<entt::entity> entities;
+        for (auto [entity] : boids.each()) {
+            remove_from(spatialHash, config, entity);
+            entities.push_back(entity);
+            toRemove--;
+            if (toRemove <= 0) break;
+        }
+
+        reg.destroy(entities.begin(), entities.end());
     }
 }
 
@@ -100,6 +112,8 @@ void moveEntities(entt::registry &reg, float deltaTime)
 
 void boidLogic(entt::registry& reg, Config& config, const SpatialHash& spatialHash)
 {
+    ZoneScoped;
+
     const auto boids = reg.view<Boid, Position, Velocity>();
 
     reg.clear<Neighbor>();
@@ -445,8 +459,10 @@ int UpdateAndRender(GameData & data)
 
     updateBounds(data.config);
 
-    if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT)) {
-        data.config.count++;
+    int mouseWheel = GetMouseWheelMove();
+    if (mouseWheel != 0) {
+        data.config.count += mouseWheel;
+        if (data.config.count < 0) data.config.count = 0;
     }
 
     spawnBoids(data.reg, data.config, data.spatialHash);
@@ -454,10 +470,10 @@ int UpdateAndRender(GameData & data)
     updateSpatialHash(data);
     selectBoid(data.reg, data.config, data.spatialHash);
     markCandidates(data.reg, data.config, data.spatialHash);
-    avoidance(data.reg, data.config, data.spatialHash);
-    alignment(data.reg, data.config, data.spatialHash);
-    cohesion(data.reg, data.config, data.spatialHash);
-    // boidLogic(data.reg, data.config, data.spatialHash);
+    // avoidance(data.reg, data.config, data.spatialHash);
+    // alignment(data.reg, data.config, data.spatialHash);
+    // cohesion(data.reg, data.config, data.spatialHash);
+    boidLogic(data.reg, data.config, data.spatialHash);
     updateTurnFactor(data.reg, data.config);
     mustGoFaster(data.reg, data.config, delta);
     moveEntities(data.reg, delta);

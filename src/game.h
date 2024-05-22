@@ -145,6 +145,15 @@ static void insert_into(SpatialHash &hash, const Config &config, entt::entity e,
     }
 }
 
+static void remove_from(SpatialHash& hash, const Config& config, entt::entity e)
+{
+    ZoneScoped;
+
+    for (auto &[_key, value] : hash) {
+        value.erase(HashEntry{ e });
+    }
+}
+
 
 const std::unordered_set<HashEntry, HashEntryHash, HashEntryEqual> emptySet;
 
