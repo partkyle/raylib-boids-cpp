@@ -119,12 +119,11 @@ void boidLogic(entt::registry& reg, Config& config, const SpatialHash& spatialHa
     reg.clear<Neighbor>();
 
     for (auto [entity, position, velocity] : boids.each()) {
-        auto cell = positionToCell(position, config.cellSize);
         int neighborCount = 0;
         Vector2 close = {};
         Vector2 avgVelocity = {};
         Vector2 avgPosition = {};
-        for (auto &[otherEntity] : get_all_in_cell(spatialHash, config, cell.first, cell.second)) {
+        for (auto &[otherEntity] : get_all_near_position(spatialHash, config, position)) {
             if (entity == otherEntity) continue;
 
             auto [otherPosition, otherVelocity] = reg.get<Position, Velocity>(otherEntity);
@@ -219,30 +218,12 @@ void markCandidates(entt::registry &reg, const Config &config, const SpatialHash
 
     auto selected = reg.view<Position, Selected>();
     for (auto [entity, position] : selected.each()) {
-        auto cell = positionToCell(position, config.cellSize);
-        for (auto &entry : get_all_in_cell(spatialHash, config, cell.first, cell.second)) {
+        for (auto &entry : get_all_near_position(spatialHash, config, position)) {
             if (entry.entity != entity) {
                 reg.emplace<Candidate>(entry.entity);
             }
         }
     }
-}
-
-void drawSpatialHashGrid(const entt::registry &reg, const Config &config)
-{
-    ZoneScoped;
-
-    auto selected = reg.view<Position, Selected>();
-    for ( auto [entity, position] : selected.each() ) {
-        auto cell = positionToCell(position, config.cellSize);
-        int radius = getSpatialRadius(config);
-        for (int y = cell.second - radius; y <= cell.second + radius; y++) {
-            for (int x = cell.first - radius; x <= cell.first + radius; x ++) {
-                DrawRectangleLines(int(floorf(x * config.cellSize)), int(floorf(y * config.cellSize)), int(config.cellSize), int(config.cellSize), RED);
-            }
-        }
-    }
-
 }
 
 void drawDebugLines(const entt::registry &reg, const Config &config)
@@ -265,15 +246,13 @@ void selectBoid(entt::registry &reg, const Config &config, const Camera2D &camer
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
         Vector2 mouse = GetScreenToWorld2D(GetMousePosition(), camera);
 
-        auto cell = positionToCell({mouse}, config.cellSize);
-
         if (!IsKeyDown(KEY_LEFT_SHIFT)) {
             reg.clear<Selected>();
         }
 
         entt::entity minEntity = {};
         float minDistance = FLT_MAX;
-        for (auto &[entity] : get_all_in_cell(spatialHash, config, cell.first, cell.second)) {
+        for (auto &[entity] : get_all_near_position(spatialHash, config, {mouse})) {
             auto position = reg.get<Position>(entity);
 
             auto distance = Vector2Distance(position.p, mouse);

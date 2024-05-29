@@ -74,3 +74,26 @@ const std::unordered_set<HashEntry, HashEntryHash, HashEntryEqual> &get_all_in_c
 
     return hash.at(key);
 }
+
+const std::unordered_set<HashEntry, HashEntryHash, HashEntryEqual>& get_all_near_position(const SpatialHash& hash, const Config& config, const Position& position)
+{
+    // TODO: insert return statement here
+    auto cell = positionToCell(position, config.cellSize);
+    return get_all_in_cell(hash, config, cell.first, cell.second);
+}
+
+void drawSpatialHashGrid(const entt::registry& reg, const Config& config)
+{
+    ZoneScoped;
+
+    auto selected = reg.view<Position, Selected>();
+    for (auto [entity, position] : selected.each()) {
+        auto cell = positionToCell(position, config.cellSize);
+        int radius = getSpatialRadius(config);
+        for (int y = cell.second - radius; y <= cell.second + radius; y++) {
+            for (int x = cell.first - radius; x <= cell.first + radius; x++) {
+                DrawRectangleLines(int(floorf(x * config.cellSize)), int(floorf(y * config.cellSize)), int(config.cellSize), int(config.cellSize), RED);
+            }
+        }
+    }
+}
