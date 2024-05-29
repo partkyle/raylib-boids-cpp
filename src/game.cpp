@@ -98,7 +98,7 @@ void boidLogic(entt::registry& reg, Config& config, const SpatialHash& spatialHa
         Vector2 close = {};
         Vector2 avgVelocity = {};
         Vector2 avgPosition = {};
-        for (auto &[otherEntity] : spatialHash.get_all_near_position(position)) {
+        for (auto &otherEntity : spatialHash.get_all_near_position(position)) {
             if (entity == otherEntity) continue;
 
             auto [otherPosition, otherVelocity] = reg.get<Position, Velocity>(otherEntity);
@@ -193,9 +193,9 @@ void markCandidates(entt::registry &reg, const Config &config, const SpatialHash
 
     auto selected = reg.view<Position, Selected>();
     for (auto [entity, position] : selected.each()) {
-        for (auto &entry : spatialHash.get_all_near_position(position)) {
-            if (entry.entity != entity) {
-                reg.emplace<Candidate>(entry.entity);
+        for (auto &entity : spatialHash.get_all_near_position(position)) {
+            if (entity != entity) {
+                reg.emplace<Candidate>(entity);
             }
         }
     }
@@ -227,7 +227,7 @@ void selectBoid(entt::registry &reg, const Config &config, const Camera2D &camer
 
         entt::entity minEntity = {};
         float minDistance = FLT_MAX;
-        for (auto &[entity] : spatialHash.get_all_near_position({mouse})) {
+        for (auto &entity : spatialHash.get_all_near_position({mouse})) {
             auto position = reg.get<Position>(entity);
 
             auto distance = Vector2Distance(position.p, mouse);

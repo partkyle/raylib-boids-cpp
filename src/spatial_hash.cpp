@@ -53,18 +53,16 @@ void SpatialHash::insert(entt::entity e, Position p, Velocity v, LastPosition l,
     // if we aren't forcing it, we will remove it.
     if (!force && newCellPos.first == lastPos.first && newCellPos.second == lastPos.second) return;
 
-    auto entry = HashEntry{ e };
-
     for (int y = lastPos.second - radius; y <= lastPos.second + radius; y++) {
         for (int x = lastPos.first - radius; x <= lastPos.first + radius; x++) {
-            hash[cell(x, y)].erase(entry);
+            hash[cell(x, y)].erase(e);
         }
     }
 
     {
         for (int y = newCellPos.second - radius; y <= newCellPos.second + radius; y++) {
             for (int x = newCellPos.first - radius; x <= newCellPos.first + radius; x++) {
-                hash[cell(x, y)].insert(entry);
+                hash[cell(x, y)].insert(e);
             }
         }
     }
@@ -75,11 +73,11 @@ void SpatialHash::remove(entt::entity e)
     ZoneScoped;
 
     for (auto& [_key, value] : hash) {
-        value.erase(HashEntry{ e });
+        value.erase(e);
     }
 }
 
-const std::unordered_set<HashEntry, HashEntryHash, HashEntryEqual> emptySet;
+const SpatialHash::underlying_set emptySet;
 
 const SpatialHash::underlying_set& SpatialHash::get_all_near_position(const Position& position) const
 {

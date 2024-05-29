@@ -5,27 +5,6 @@
 #include "config.h"
 #include "entities.h"
 
-struct HashEntry {
-    entt::entity entity;
-};
-
-struct HashEntryHash {
-    size_t operator()(const HashEntry &h) const
-    {
-        int result = 0;
-        return std::_Fnv1a_append_value(result, h.entity);
-    }
-};
-
-struct HashEntryEqual
-{
-    constexpr bool operator()(const HashEntry& l, const HashEntry& r) const
-    {
-        return l.entity == r.entity;
-    }
-};
-
-
 typedef std::pair<int,int> cell;
 
 struct CellHash
@@ -47,7 +26,7 @@ struct CellEqual
 };
 
 struct SpatialHash {
-    typedef std::unordered_set<HashEntry, HashEntryHash, HashEntryEqual> underlying_set;
+    typedef std::unordered_set<entt::entity> underlying_set;
     std::unordered_map<cell, underlying_set, CellHash, CellEqual> hash;
     const Config *config;
 
