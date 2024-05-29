@@ -6,31 +6,6 @@
 
 #include "game.h"
 
-int Init(GameData &data)
-{
-    data.camera.zoom = 1.0;
-
-    data.config.bounds = {100, 100, 1280 - 200, 720 - 200};
-
-    data.config.count = 1200;
-
-    data.config.minSpeed = 200.0f;
-    data.config.maxSpeed = 1000.0f;
-    data.config.turnFactor = 10;
-
-    data.config.avoidRadius = 40.0f;
-    data.config.avoidFactor = 0.05f;
-
-    data.config.visibleRadius = 100.0f;
-    data.config.alignFactor = 0.05f;
-    data.config.cohesionFactor = 0.0005f;
-
-
-    data.config.cellSize = data.config.visibleRadius;
-
-    return 0;
-}
-
 float randf()
 {
     return rand() / float(RAND_MAX);
@@ -63,14 +38,14 @@ void spawnBoids(entt::registry &reg, const Config &config, SpatialHash &spatialH
             reg.emplace<BoidColor>(entity, Color{0, 255, 255, 255});
 
             auto [position, velocity, lastPosition] = reg.get<Position, Velocity, LastPosition>(entity);
-            insert_into(spatialHash, config, entity, position, velocity, lastPosition, true);
+            spatialHash.insert(entity, position, velocity, lastPosition, true);
         }
     }
     else if (boids.size() > config.count) {
         int toRemove = boids.size() - config.count;
         std::vector<entt::entity> entities;
         for (auto [entity] : boids.each()) {
-            remove_from(spatialHash, config, entity);
+            spatialHash.remove(entity);
             entities.push_back(entity);
             toRemove--;
             if (toRemove <= 0) break;
@@ -123,7 +98,7 @@ void boidLogic(entt::registry& reg, Config& config, const SpatialHash& spatialHa
         Vector2 close = {};
         Vector2 avgVelocity = {};
         Vector2 avgPosition = {};
-        for (auto &[otherEntity] : get_all_near_position(spatialHash, config, position)) {
+        for (auto &[otherEntity] : spatialHash.get_all_near_position(position)) {
             if (entity == otherEntity) continue;
 
             auto [otherPosition, otherVelocity] = reg.get<Position, Velocity>(otherEntity);
@@ -218,7 +193,7 @@ void markCandidates(entt::registry &reg, const Config &config, const SpatialHash
 
     auto selected = reg.view<Position, Selected>();
     for (auto [entity, position] : selected.each()) {
-        for (auto &entry : get_all_near_position(spatialHash, config, position)) {
+        for (auto &entry : spatialHash.get_all_near_position(position)) {
             if (entry.entity != entity) {
                 reg.emplace<Candidate>(entry.entity);
             }
@@ -252,7 +227,7 @@ void selectBoid(entt::registry &reg, const Config &config, const Camera2D &camer
 
         entt::entity minEntity = {};
         float minDistance = FLT_MAX;
-        for (auto &[entity] : get_all_near_position(spatialHash, config, {mouse})) {
+        for (auto &[entity] : spatialHash.get_all_near_position({mouse})) {
             auto position = reg.get<Position>(entity);
 
             auto distance = Vector2Distance(position.p, mouse);
@@ -350,7 +325,7 @@ void draw(const GameData &data, const Config & config)
         ClearBackground(GRAY);
         BeginMode2D(data.camera);
         drawBoids(data.reg, config);
-        drawSpatialHashGrid(data.reg, data.config);
+        drawSpatialHashGrid(data.reg, data.spatialHash);
         drawDebugLines(data.reg, data.config);
         drawBounds(data.config);
         EndMode2D();
@@ -378,7 +353,7 @@ void updateSpatialHash(GameData & data)
     auto boids = data.reg.view<const Boid, const Position, const Velocity, LastPosition>();
 
     for (auto [entity, p, v, l] : boids.each()) {
-        insert_into(data.spatialHash, data.config, entity, p, v, l);
+        data.spatialHash.insert(entity, p, v, l);
         // update the last position now that we've update the spatial
         // so it can be used next frame
         l.p = p.p;

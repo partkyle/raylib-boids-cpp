@@ -24,9 +24,7 @@ int main ()
     // SetTargetFPS(180);                   // Set our game to run at 60 frames-per-second
     //--------------------------------------------------------------------------------------
 
-    GameData data = {0};
-
-    Init(data);
+    GameData data;
 
     srand(time_t(NULL));
 

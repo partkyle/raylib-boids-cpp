@@ -46,9 +46,17 @@ struct CellEqual
     }
 };
 
-typedef std::unordered_map<cell, std::unordered_set<HashEntry, HashEntryHash, HashEntryEqual>, CellHash, CellEqual> SpatialHash;
+struct SpatialHash {
+    typedef std::unordered_set<HashEntry, HashEntryHash, HashEntryEqual> underlying_set;
+    std::unordered_map<cell, underlying_set, CellHash, CellEqual> hash;
+    const Config *config;
 
-void insert_into(SpatialHash &hash, const Config &config, entt::entity e, Position p, Velocity v, LastPosition l, bool force = false);
-void remove_from(SpatialHash &hash, const Config &config, entt::entity e);
-const std::unordered_set<HashEntry, HashEntryHash, HashEntryEqual> &get_all_near_position(const SpatialHash &hash, const Config &config, const Position &position);
-void drawSpatialHashGrid(const entt::registry& reg, const Config& config);
+    void insert(entt::entity e, Position p, Velocity v, LastPosition l, bool force = false);
+    void remove(entt::entity e);
+    const underlying_set &get_all_near_position(const Position &position) const;
+
+    SpatialHash(const Config* config) : config(config) {};
+};
+
+
+void drawSpatialHashGrid(const entt::registry &reg, const SpatialHash &hash);
