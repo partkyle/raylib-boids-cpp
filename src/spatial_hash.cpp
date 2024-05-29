@@ -2,16 +2,21 @@
 
 #include "spatial_hash.h"
 
-std::pair<int, int> positionToCell(const Position &p, float cellSize)
+static std::pair<int, int> positionToCell(float x, float y, float cellSize)
 {
-    return std::pair(int(p.p.x / cellSize),  int(p.p.y / cellSize));
+    return std::pair(int(x / cellSize), int(y / cellSize));
 }
 
-int hashCell(std::pair<int, int> p) {
+static std::pair<int, int> positionToCell(const Position &p, float cellSize)
+{
+    return positionToCell(p.p.x, p.p.y, cellSize);
+}
+
+static int hashCell(std::pair<int, int> p) {
     return p.first * 92837111 + p.second * 689287499;
 }
 
-int getSpatialRadius(const Config *config)
+static int getSpatialRadius(const Config *config)
 {
     int radius = 1;
 
@@ -22,23 +27,6 @@ int getSpatialRadius(const Config *config)
     }
 
     return radius;
-}
-
-void drawSpatialHashGrid(const entt::registry& reg, const SpatialHash &hash)
-{
-    ZoneScoped;
-
-    auto selected = reg.view<Position, Selected>();
-    for (auto [entity, position] : selected.each()) {
-        float cellSize = hash.config->cellSize;
-        auto cell = positionToCell(position, cellSize);
-        int radius = getSpatialRadius(hash.config);
-        for (int y = cell.second - radius; y <= cell.second + radius; y++) {
-            for (int x = cell.first - radius; x <= cell.first + radius; x++) {
-                DrawRectangleLines(int(floorf(x * cellSize)), int(floorf(y * cellSize)), int(cellSize), int(cellSize), RED);
-            }
-        }
-    }
 }
 
 void SpatialHash::insert(entt::entity e, Position p, Velocity v, LastPosition l, bool force)
@@ -88,4 +76,22 @@ const SpatialHash::underlying_set& SpatialHash::get_all_near_position(const Posi
     if (hash.find(cell) == hash.end()) return emptySet;
 
     return hash.at(cell);
+}
+
+
+void drawSpatialHashGrid(const entt::registry& reg, const SpatialHash& hash)
+{
+    ZoneScoped;
+
+    auto selected = reg.view<Position, Selected>();
+    for (auto [entity, position] : selected.each()) {
+        float cellSize = hash.config->cellSize;
+        auto cell = positionToCell(position, cellSize);
+        int radius = getSpatialRadius(hash.config);
+        for (int y = cell.second - radius; y <= cell.second + radius; y++) {
+            for (int x = cell.first - radius; x <= cell.first + radius; x++) {
+                DrawRectangleLines(int(floorf(x * cellSize)), int(floorf(y * cellSize)), int(cellSize), int(cellSize), RED);
+            }
+        }
+    }
 }
