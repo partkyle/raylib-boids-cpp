@@ -176,6 +176,8 @@ struct GameData {
     Config config;
 
     SpatialHash spatialHash;
+
+    bool paused;
 };
 
 

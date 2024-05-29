@@ -1,3 +1,5 @@
+#include <iostream>
+
 #include "raylib.h"
 #include "rlgl.h"
 #include "raymath.h"
@@ -12,11 +14,11 @@ int Init(GameData &data)
 
     data.config.bounds = {100, 100, 1280 - 200, 720 - 200};
 
-    data.config.count = 100;
+    data.config.count = 1200;
 
-    data.config.minSpeed = 2.0f;
-    data.config.maxSpeed = 100.0f;
-    data.config.turnFactor = 100.0;
+    data.config.minSpeed = 200.0f;
+    data.config.maxSpeed = 1000.0f;
+    data.config.turnFactor = 10;
 
     data.config.avoidRadius = 40.0f;
     data.config.avoidFactor = 0.05f;
@@ -157,94 +159,6 @@ void boidLogic(entt::registry& reg, Config& config, const SpatialHash& spatialHa
     }
 }
 
-
-void avoidance(entt::registry &reg, Config &config, const SpatialHash &spatialHash)
-{
-    ZoneScoped;
-
-    const auto boids = reg.view<Boid, Position, Velocity>();
-
-    for (auto [entity, position, velocity] : boids.each()) {
-        Vector2 close = {};
-        auto cell = positionToCell(position, config.cellSize);
-        for (auto &[otherEntity] : get_all_in_cell(spatialHash, config, cell.first, cell.second)) {
-            if (entity == otherEntity) continue;
-
-            auto [otherPosition, otherVelocity] = reg.get<Position, Velocity>(otherEntity);
-
-            Vector2 distance = Vector2Subtract(position.p, otherPosition.p);
-            if (Vector2Length(distance) <= config.avoidRadius) {
-                close = Vector2Add(close, distance);
-            }
-        }
-
-        velocity.v = Vector2Add(velocity.v, Vector2Multiply(close, Vector2{config.avoidFactor, config.avoidFactor}));
-    }
-}
-
-void alignment(entt::registry &reg, Config &config, const SpatialHash &spatialHash)
-{
-    ZoneScoped;
-    
-    reg.clear<Neighbor>();
-
-    const auto boids = reg.view<Boid, Position, Velocity>();
-    for (auto [entity, position, velocity] : boids.each()) {
-        auto cell = positionToCell(position, config.cellSize);
-        Vector2 avgVelocity = {};
-        int neighborCount = 0;
-        for (auto &[otherEntity] : get_all_in_cell(spatialHash, config, cell.first, cell.second)) {
-            if (entity == otherEntity) continue;
-
-            auto [otherPosition, otherVelocity] = reg.get<Position, Velocity>(otherEntity);
-
-            Vector2 distance = Vector2Subtract(position.p, otherPosition.p);
-            if (Vector2Length(distance) <= config.visibleRadius) {
-                neighborCount++;
-                avgVelocity = Vector2Add(avgVelocity, otherVelocity.v);
-
-                if (reg.all_of<Selected>(entity)) {
-                    reg.emplace<Neighbor>(otherEntity);
-                }
-            }
-        }
-
-        if (neighborCount > 0) {
-            avgVelocity = Vector2Divide(avgVelocity, Vector2{float(neighborCount), float(neighborCount)});
-            velocity.v = Vector2Add(velocity.v, Vector2Multiply(Vector2Subtract(avgVelocity, velocity.v), Vector2{config.alignFactor, config.alignFactor}));
-        }
-    }
-}
-
-void cohesion(entt::registry &reg, Config &config, const SpatialHash &spatialHash)
-{
-    ZoneScoped;
-    
-    const auto boids = reg.view<Boid, Position, Velocity>();
-    for (auto [entity, position, velocity] : boids.each()) {
-        auto cell = positionToCell(position, config.cellSize);
-        Vector2 avgPosition = {0};
-        int neighborCount = 0;
-        for (auto &[otherEntity] : get_all_in_cell(spatialHash, config, cell.first, cell.second)) {
-            if (entity == otherEntity) continue;
-
-            auto [otherPosition, otherVelocity] = reg.get<Position, Velocity>(otherEntity);
-
-
-            Vector2 distance = Vector2Subtract(position.p, otherPosition.p);
-            if (Vector2Length(distance) <= config.visibleRadius) {
-                neighborCount++;
-                avgPosition = Vector2Add(avgPosition, otherPosition.p);
-            }
-        }
-
-        if (neighborCount > 0) {
-            avgPosition = Vector2Divide(avgPosition, Vector2{float(neighborCount), float(neighborCount)});
-            velocity.v = Vector2Add(velocity.v, Vector2Multiply(Vector2Subtract(avgPosition, position.p), Vector2{config.cohesionFactor, config.cohesionFactor}));
-        }
-    }
-}
-
 void mustGoFaster(entt::registry &reg, Config &config, float delta)
 {
     ZoneScoped;
@@ -261,14 +175,18 @@ void mustGoFaster(entt::registry &reg, Config &config, float delta)
     }
 }
 
-void drawBoids(const entt::registry &reg)
+void drawBoids(const entt::registry &reg, const Config &config)
 {
     ZoneScoped;
 
     const auto boids = reg.view<Boid, Position, Velocity, BoidColor>();
 
     for (auto [entity, position, velocity, color] : boids.each()) {
-        auto c = color.color;
+        
+        auto x = (unsigned int)floor((velocity.v.x * 0.5 + config.maxSpeed) / (config.maxSpeed * 2) * 255);
+        auto y = (unsigned int)floor((velocity.v.y * 0.5 + config.maxSpeed) / (config.maxSpeed * 2) * 255);
+
+        Color c = Color{ (unsigned char)x, (unsigned char)y, 255, 255 };
         if (reg.all_of<Candidate>(entity)) {
             c = GREEN;
         }
@@ -340,14 +258,20 @@ void drawDebugLines(const entt::registry &reg, const Config &config)
     }
 }
 
-void selectBoid(entt::registry &reg, const Config &config, const SpatialHash &spatialHash)
+void selectBoid(entt::registry &reg, const Config &config, const Camera2D &camera, const SpatialHash &spatialHash)
 {
+    if (IsMouseButtonPressed(MOUSE_BUTTON_RIGHT)) {
+        reg.clear<Selected>();
+    }
+
     if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)) {
-        Vector2 mouse = GetMousePosition();
+        Vector2 mouse = GetScreenToWorld2D(GetMousePosition(), camera);
 
         auto cell = positionToCell({mouse}, config.cellSize);
 
-        reg.clear<Selected>();
+        if (!IsKeyDown(KEY_LEFT_SHIFT)) {
+            reg.clear<Selected>();
+        }
 
         entt::entity minEntity = {};
         float minDistance = FLT_MAX;
@@ -374,13 +298,32 @@ void drawBounds(const Config& config)
     DrawRectangleLines(config.bounds.x, config.bounds.y, config.bounds.width, config.bounds.height, RED);
 }
 
-void updateBounds(Config &config)
+void updateBounds(Config &config, Camera2D &camera)
 {
     int padding = 100;
     config.bounds.x = padding;
     config.bounds.y = padding;
     config.bounds.width = GetScreenWidth() - padding * 2;
     config.bounds.height = GetScreenHeight() - padding * 2;
+
+
+    camera.target = { config.bounds.width / 2.0f + padding, config.bounds.height / 2.0f + padding };
+    camera.offset = { config.bounds.width / 2.0f + padding, config.bounds.height / 2.0f + padding };
+}
+
+void updateZoom(Camera2D &camera)
+{
+    int mouseWheel = GetMouseWheelMove();
+    if (mouseWheel != 0) {
+        float zoomAmount = 0.05;
+        float zoomMin = 0.01;
+        camera.zoom += zoomAmount * mouseWheel;
+        if (camera.zoom < zoomMin) camera.zoom = zoomMin;
+    }
+
+    if (IsKeyPressed(KEY_EQUAL)) {
+        camera.zoom = 1;
+    }
 }
 
 void drawDebugSelectedText(const entt::registry &reg, int startX, int startY, int fontSize)
@@ -419,24 +362,29 @@ void drawDebugSelectedText(const entt::registry &reg, int startX, int startY, in
     }
 }
 
-void draw(const GameData &data)
+void draw(const GameData &data, const Config & config)
 {
     ZoneScoped;
+
+    Camera2D textCamera = {};
+    textCamera.zoom = 1.0;
 
     BeginDrawing();
         ClearBackground(GRAY);
         BeginMode2D(data.camera);
-        drawBoids(data.reg);
+        drawBoids(data.reg, config);
         drawSpatialHashGrid(data.reg, data.config);
         drawDebugLines(data.reg, data.config);
         drawBounds(data.config);
+        EndMode2D();
 
+        BeginMode2D(textCamera);
         char buf[80];
         sprintf_s(buf, "boid count: %d", data.config.count);
-        DrawText(buf, 10, 10, 20, Color{0, 255, 255, 255});
+        DrawText(buf, 10, 10, 20, Color{ 0, 255, 255, 255 });
 
         sprintf_s(buf, "fps: %d", GetFPS());
-        DrawText(buf, 10, 30, 20, Color{0, 255, 255, 255});
+        DrawText(buf, 10, 30, 20, Color{ 0, 255, 255, 255 });
 
         int start = 50;
         int fontSize = 20;
@@ -460,36 +408,39 @@ void updateSpatialHash(GameData & data)
     }
 }
 
+void updatePause(GameData& data)
+{
+    if (IsKeyPressed(KEY_SPACE)) {
+        data.paused = !data.paused;
+    }
+}
+
 int UpdateAndRender(GameData & data)
 {
     ZoneScoped;
 
     float delta = GetFrameTime();
 
-    updateBounds(data.config);
-
-    int mouseWheel = GetMouseWheelMove();
-    if (mouseWheel != 0) {
-        data.config.count += mouseWheel;
-        if (data.config.count < 0) data.config.count = 0;
-    }
+    updateBounds(data.config, data.camera);
+    updateZoom(data.camera);
+    updatePause(data);
 
     spawnBoids(data.reg, data.config, data.spatialHash);
 
     updateSpatialHash(data);
-    selectBoid(data.reg, data.config, data.spatialHash);
+    selectBoid(data.reg, data.config, data.camera, data.spatialHash);
     markCandidates(data.reg, data.config, data.spatialHash);
-    // avoidance(data.reg, data.config, data.spatialHash);
-    // alignment(data.reg, data.config, data.spatialHash);
-    // cohesion(data.reg, data.config, data.spatialHash);
-    boidLogic(data.reg, data.config, data.spatialHash);
-    updateTurnFactor(data.reg, data.config);
-    mustGoFaster(data.reg, data.config, delta);
-    moveEntities(data.reg, delta);
+
+    if (!data.paused) {
+        boidLogic(data.reg, data.config, data.spatialHash);
+        updateTurnFactor(data.reg, data.config);
+        mustGoFaster(data.reg, data.config, delta);
+        moveEntities(data.reg, delta);
+    }
 
     // Draw
     //----------------------------------------------------------------------------------
-    draw(data);
+    draw(data, data.config);
     //----------------------------------------------------------------------------------
 
     return 0;
