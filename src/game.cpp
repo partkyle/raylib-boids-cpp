@@ -193,9 +193,9 @@ void markCandidates(entt::registry &reg, const Config &config, const SpatialHash
 
     auto selected = reg.view<Position, Selected>();
     for (auto [entity, position] : selected.each()) {
-        for (auto &entity : spatialHash.get_all_near_position(position)) {
-            if (entity != entity) {
-                reg.emplace<Candidate>(entity);
+        for (auto &e : spatialHash.get_all_near_position(position)) {
+            if (e != entity) {
+                reg.emplace<Candidate>(e);
             }
         }
     }
