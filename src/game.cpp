@@ -85,9 +85,11 @@ void moveEntities(entt::registry &reg, float deltaTime)
     }
 }
 
-void updateBoid(entt::registry &reg, const SpatialHash &spatialHash, const Config &config, entt::entity &entity, Position &position, Velocity &velocity)
+void updateBoid(entt::registry &reg, const SpatialHash &spatialHash, const Config &config, entt::entity &entity)
 {
     ZoneScoped;
+
+    auto [position, velocity] = reg.get<Position, Velocity>(entity);
 
     int neighborCount = 0;
     Vector2 close = {};
@@ -123,19 +125,18 @@ void updateBoid(entt::registry &reg, const SpatialHash &spatialHash, const Confi
         avgPosition = Vector2Divide(avgPosition, Vector2{ float(neighborCount), float(neighborCount) });
         velocity.v = Vector2Add(velocity.v, Vector2Multiply(Vector2Subtract(avgPosition, position.p), Vector2{ config.cohesionFactor, config.cohesionFactor }));
     }
-
 }
 
 void boidLogic(entt::registry& reg, Config& config, const SpatialHash& spatialHash)
 {
     ZoneScoped;
 
-    const auto boids = reg.view<Boid, Position, Velocity>();
+    const auto boids = reg.view<Boid>();
 
     reg.clear<Neighbor>();
 
-    for (auto [entity, position, velocity] : boids.each()) {
-        updateBoid(reg, spatialHash, config, entity, position, velocity);
+    for (auto [entity] : boids.each()) {
+        updateBoid(reg, spatialHash, config, entity);
     }
 }
 
@@ -404,4 +405,11 @@ int UpdateAndRender(GameData & data)
     //----------------------------------------------------------------------------------
 
     return 0;
+}
+
+
+void ThreadWorker(GameData *data) {
+    _sleep(1000);
+
+    data->config.count++;
 }

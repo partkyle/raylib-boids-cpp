@@ -48,3 +48,4 @@ struct GameData {
 
 int Init(GameData &data);
 int UpdateAndRender(GameData &data);
+void ThreadWorker(GameData* data);

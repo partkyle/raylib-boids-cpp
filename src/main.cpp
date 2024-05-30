@@ -7,6 +7,16 @@
 
 #include "tracy/Tracy.hpp"
 
+#include <iostream>
+
+bool running = true;
+
+void ThreadProc(GameData *data) {
+    while (running) {
+        ThreadWorker(data);
+    }
+}
+
 //------------------------------------------------------------------------------------
 // Program main entry point
 //------------------------------------------------------------------------------------
@@ -27,6 +37,16 @@ int main ()
     GameData data;
 
     srand(time_t(NULL));
+    /*
+    std::thread t0(ThreadProc, &data);
+    std::thread t1(ThreadProc, &data);
+    std::thread t2(ThreadProc, &data);
+    std::thread t3(ThreadProc, &data);
+    std::thread t4(ThreadProc, &data);
+    std::thread t5(ThreadProc, &data);
+    std::thread t6(ThreadProc, &data);
+    std::thread t7(ThreadProc, &data);
+    */
 
     // Main game loop
     while (!WindowShouldClose())        // Detect window close button or ESC key
@@ -37,6 +57,18 @@ int main ()
 
         FrameMark;
     }
+    /*
+    running = false;
+    t0.join();
+    t1.join();
+    t2.join();
+    t3.join();
+    t4.join();
+    t5.join();
+    t6.join();
+    t7.join();
+    */
+    
 
     // De-Initialization
     //--------------------------------------------------------------------------------------
