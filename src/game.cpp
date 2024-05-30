@@ -85,6 +85,47 @@ void moveEntities(entt::registry &reg, float deltaTime)
     }
 }
 
+void updateBoid(entt::registry &reg, const SpatialHash &spatialHash, const Config &config, entt::entity &entity, Position &position, Velocity &velocity)
+{
+    ZoneScoped;
+
+    int neighborCount = 0;
+    Vector2 close = {};
+    Vector2 avgVelocity = {};
+    Vector2 avgPosition = {};
+    for (auto& otherEntity : spatialHash.get_all_near_position(position)) {
+        if (entity == otherEntity) continue;
+
+        auto [otherPosition, otherVelocity] = reg.get<Position, Velocity>(otherEntity);
+
+        Vector2 distance = Vector2Subtract(position.p, otherPosition.p);
+        if (Vector2Length(distance) <= config.avoidRadius) {
+            close = Vector2Add(close, distance);
+        }
+
+        if (Vector2Length(distance) <= config.visibleRadius) {
+            neighborCount++;
+            avgVelocity = Vector2Add(avgVelocity, otherVelocity.v);
+            avgPosition = Vector2Add(avgPosition, otherPosition.p);
+
+            if (reg.all_of<Selected>(entity)) {
+                reg.emplace<Neighbor>(otherEntity);
+            }
+        }
+    }
+
+    velocity.v = Vector2Add(velocity.v, Vector2Multiply(close, Vector2{ config.avoidFactor, config.avoidFactor }));
+
+    if (neighborCount > 0) {
+        avgVelocity = Vector2Divide(avgVelocity, Vector2{ float(neighborCount), float(neighborCount) });
+        velocity.v = Vector2Add(velocity.v, Vector2Multiply(Vector2Subtract(avgVelocity, velocity.v), Vector2{ config.alignFactor, config.alignFactor }));
+
+        avgPosition = Vector2Divide(avgPosition, Vector2{ float(neighborCount), float(neighborCount) });
+        velocity.v = Vector2Add(velocity.v, Vector2Multiply(Vector2Subtract(avgPosition, position.p), Vector2{ config.cohesionFactor, config.cohesionFactor }));
+    }
+
+}
+
 void boidLogic(entt::registry& reg, Config& config, const SpatialHash& spatialHash)
 {
     ZoneScoped;
@@ -94,40 +135,7 @@ void boidLogic(entt::registry& reg, Config& config, const SpatialHash& spatialHa
     reg.clear<Neighbor>();
 
     for (auto [entity, position, velocity] : boids.each()) {
-        int neighborCount = 0;
-        Vector2 close = {};
-        Vector2 avgVelocity = {};
-        Vector2 avgPosition = {};
-        for (auto &otherEntity : spatialHash.get_all_near_position(position)) {
-            if (entity == otherEntity) continue;
-
-            auto [otherPosition, otherVelocity] = reg.get<Position, Velocity>(otherEntity);
-
-            Vector2 distance = Vector2Subtract(position.p, otherPosition.p);
-            if (Vector2Length(distance) <= config.avoidRadius) {
-                close = Vector2Add(close, distance);
-            }
-
-            if (Vector2Length(distance) <= config.visibleRadius) {
-                neighborCount++;
-                avgVelocity = Vector2Add(avgVelocity, otherVelocity.v);
-                avgPosition = Vector2Add(avgPosition, otherPosition.p);
-
-                if (reg.all_of<Selected>(entity)) {
-                    reg.emplace<Neighbor>(otherEntity);
-                }
-            }
-        }
-
-        velocity.v = Vector2Add(velocity.v, Vector2Multiply(close, Vector2{ config.avoidFactor, config.avoidFactor }));
-
-        if (neighborCount > 0) {
-            avgVelocity = Vector2Divide(avgVelocity, Vector2{ float(neighborCount), float(neighborCount) });
-            velocity.v = Vector2Add(velocity.v, Vector2Multiply(Vector2Subtract(avgVelocity, velocity.v), Vector2{ config.alignFactor, config.alignFactor }));
-
-            avgPosition = Vector2Divide(avgPosition, Vector2{ float(neighborCount), float(neighborCount) });
-            velocity.v = Vector2Add(velocity.v, Vector2Multiply(Vector2Subtract(avgPosition, position.p), Vector2{ config.cohesionFactor, config.cohesionFactor }));
-        }
+        updateBoid(reg, spatialHash, config, entity, position, velocity);
     }
 }
 
